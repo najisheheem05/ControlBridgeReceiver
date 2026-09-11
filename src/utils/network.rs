@@ -6,12 +6,15 @@
  * This program is distributed without any warranty. See the GNU General Public License for more details.
  */
 
-use std::net::{UdpSocket, SocketAddr};
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
-use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::Cursor;
+use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+use byteorder::{LittleEndian, ReadBytesExt};
+use log::info;
+
 use crate::data::GamepadState;
 
 pub const MIN_SUPPORTED_VERSION: i32 = 2;
@@ -25,37 +28,67 @@ pub struct DiscoveryServer {
 
 impl DiscoveryServer {
     pub fn new(port: u16) -> Self {
-        Self { port, is_running: Arc::new(AtomicBool::new(false)) }
+        Self {
+            port,
+            is_running: Arc::new(AtomicBool::new(false)),
+        }
     }
 
-    pub fn start(&self, on_responded: impl Fn(i32) + Send + 'static) {
-        if self.is_running.swap(true, Ordering::SeqCst) { return; }
-        
+    /// Starts the discovery listener.
+    ///
+    /// The server runs continuously until [`stop`](Self::stop) is called.
+    /// When `is_full` is `true`, incoming discovery requests are silently
+    /// ignored (the client will timeout and can retry later when a slot opens).
+    ///
+    /// `on_responded` is called with the client's IP and the agreed feature
+    /// flags after a successful handshake, so the caller can pre-register
+    /// per-client features before data packets arrive.
+    pub fn start(
+        &self,
+        is_full: Arc<AtomicBool>,
+        on_responded: impl Fn(IpAddr, i32) + Send + 'static,
+    ) {
+        if self.is_running.swap(true, Ordering::SeqCst) {
+            return;
+        }
+
         let socket = UdpSocket::bind(("0.0.0.0", self.port)).unwrap();
-        socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).unwrap();
+        socket
+            .set_read_timeout(Some(std::time::Duration::from_millis(500)))
+            .unwrap();
         let running = Arc::clone(&self.is_running);
 
         thread::spawn(move || {
             let mut buf = [0u8; 256];
             while running.load(Ordering::SeqCst) {
                 if let Ok((amt, src)) = socket.recv_from(&mut buf) {
+                    // Don't respond when all player slots are occupied
+                    if is_full.load(Ordering::SeqCst) {
+                        continue;
+                    }
+
                     let msg = String::from_utf8_lossy(&buf[..amt]);
                     if msg.starts_with("PADCONNECT_DISCOVER") {
                         let parts: Vec<&str> = msg.split(':').collect();
-                        let client_version = parts.get(1).and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
-                        let client_features = parts.get(2).and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
+                        let client_version =
+                            parts.get(1).and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
+                        let client_features =
+                            parts.get(2).and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
 
                         if client_version < MIN_SUPPORTED_VERSION {
-                            println!("App Update Required for client.");
+                            info!("App Update Required for client at {}", src);
                         }
 
                         let agreed_version = client_version.min(MIN_SUPPORTED_VERSION);
                         let agreed_features = client_features & (FEATURE_RUMBLE | FEATURE_LATENCY);
-                        
-                        let response = format!("PADCONNECT_HERE:8082:{}:{}", agreed_version, agreed_features);
+
+                        let response = format!(
+                            "PADCONNECT_HERE:8082:{}:{}",
+                            agreed_version, agreed_features
+                        );
                         let _ = socket.send_to(response.as_bytes(), src);
-                        
-                        on_responded(agreed_features);
+
+                        on_responded(src.ip(), agreed_features);
                     }
                 }
             }
@@ -70,37 +103,38 @@ impl DiscoveryServer {
 pub struct UdpReceiver {
     port: u16,
     is_running: Arc<AtomicBool>,
-    is_latency_enabled: Arc<AtomicBool>,
-    is_rumble_enabled: Arc<AtomicBool>,
-    pub current_sender: Arc<Mutex<Option<SocketAddr>>>,
     socket: Arc<Mutex<Option<UdpSocket>>>,
 }
 
 impl UdpReceiver {
     pub fn new(port: u16) -> Self {
-        Self { 
-            port, 
+        Self {
+            port,
             is_running: Arc::new(AtomicBool::new(false)),
-            is_latency_enabled: Arc::new(AtomicBool::new(false)),
-            is_rumble_enabled: Arc::new(AtomicBool::new(false)),
-            current_sender: Arc::new(Mutex::new(None)),
             socket: Arc::new(Mutex::new(None)),
         }
     }
 
-    pub fn set_enabled_features(&self, features: i32) {
-        self.is_rumble_enabled.store((features & FEATURE_RUMBLE) != 0, Ordering::SeqCst);
-        self.is_latency_enabled.store((features & FEATURE_LATENCY) != 0, Ordering::SeqCst);
-    }
+    /// Starts receiving gamepad packets.
+    ///
+    /// For each valid input packet (type 0), calls `on_event` with:
+    /// - The source `SocketAddr` (for session routing)
+    /// - The parsed `GamepadState`
+    /// - An optional latency timestamp (`i64` nanos) if the packet contained one
+    ///
+    /// Feature checks (rumble, latency) are NOT handled here — the caller
+    /// (viewmodel) decides per-slot behavior via the [`SessionManager`].
+    pub fn start(
+        &self,
+        on_event: impl Fn(SocketAddr, GamepadState, Option<i64>) + Send + 'static,
+    ) {
+        if self.is_running.swap(true, Ordering::SeqCst) {
+            return;
+        }
 
-    pub fn start(&self, on_event: impl Fn(GamepadState) + Send + 'static) {
-        if self.is_running.swap(true, Ordering::SeqCst) { return; }
-        
         let socket = UdpSocket::bind(("0.0.0.0", self.port)).unwrap();
         *self.socket.lock().unwrap() = Some(socket.try_clone().expect("Failed to clone socket"));
         let running = Arc::clone(&self.is_running);
-        let sender_ref = Arc::clone(&self.current_sender);
-        let latency_enabled = Arc::clone(&self.is_latency_enabled);
 
         thread::spawn(move || {
             let mut buf = [0u8; 21];
@@ -119,14 +153,10 @@ impl UdpReceiver {
                                 rt: cursor.read_u8().unwrap_or(0),
                             };
 
-                            *sender_ref.lock().unwrap() = Some(src);
-                            on_event(state);
+                            // Read the optional latency timestamp (present if packet has remaining bytes)
+                            let sent_time = cursor.read_i64::<LittleEndian>().ok();
 
-                            if latency_enabled.load(Ordering::SeqCst) {
-                                if let Ok(sent_time) = cursor.read_i64::<LittleEndian>() {
-                                    Self::send_latency(&socket, src, sent_time);
-                                }
-                            }
+                            on_event(src, state, sent_time);
                         }
                     }
                 }
@@ -134,34 +164,14 @@ impl UdpReceiver {
         });
     }
 
-    fn send_latency(socket: &UdpSocket, target: SocketAddr, sent_time: i64) {
-        let mut response = Vec::with_capacity(17);
-        response.push(2u8); // Packet Type 2
-
-        let now_nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as i64;
-
-        let _ = response.write_i64::<LittleEndian>(sent_time);
-        let _ = response.write_i64::<LittleEndian>(now_nanos);
-
-        let _ = socket.send_to(&response, target);
-    }
-
-    pub fn on_rumble(&self, large: u8, small: u8) {
-        if !self.is_rumble_enabled.load(Ordering::SeqCst) {
-            return;
-        }
-
-        if let Some(target) = *self.current_sender.lock().unwrap() {
-            if let Some(socket) = self.socket.lock().unwrap().as_ref() {
-                let packet = [1u8, large, small];
-                let _ = socket.send_to(&packet, target);
-            }
+    /// Sends a raw packet to the given target address via the bound socket.
+    /// Used by the viewmodel for latency echo and rumble responses.
+    pub fn send_to(&self, data: &[u8], target: SocketAddr) {
+        if let Some(socket) = self.socket.lock().unwrap().as_ref() {
+            let _ = socket.send_to(data, target);
         }
     }
-    
+
     pub fn stop(&self) {
         self.is_running.store(false, Ordering::SeqCst);
     }
