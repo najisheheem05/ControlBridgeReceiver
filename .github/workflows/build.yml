@@ -14,26 +14,26 @@ jobs:
           - os: windows-latest
             name: windows-x64
             formats: nsis
-            artifact: PadConnectReceiver-windows-x86_64
-            path: target/release/PadConnectReceiver_*.exe
+            artifact: ControlBridgeReceiver-windows-x86_64
+            path: target/release/ControlBridgeReceiver_*.exe
 
           - os: windows-11-arm
             name: windows-arm64
             formats: nsis
-            artifact: PadConnectReceiver-windows-arm64
-            path: target/release/PadConnectReceiver_*.exe
+            artifact: ControlBridgeReceiver-windows-arm64
+            path: target/release/ControlBridgeReceiver_*.exe
 
           - os: ubuntu-latest
             name: linux-x64
             formats: appimage
-            artifact: PadConnectReceiver-linux-x86_64
-            path: target/release/PadConnectReceiver_*.AppImage
+            artifact: ControlBridgeReceiver-linux-x86_64
+            path: target/release/ControlBridgeReceiver_*.AppImage
 
           - os: ubuntu-24.04-arm
             name: linux-arm64
             formats: appimage
-            artifact: PadConnectReceiver-linux-arm64
-            path: target/release/PadConnectReceiver_*.AppImage
+            artifact: ControlBridgeReceiver-linux-arm64
+            path: target/release/ControlBridgeReceiver_*.AppImage
 
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}

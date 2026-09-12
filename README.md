@@ -1,26 +1,26 @@
-# PadConnectReceiver
+# ControlBridgeReceiver
 
 [![Discord](https://img.shields.io/discord/1496412688685858846?label=&logo=discord&logoColor=ffffff&color=5865F2&labelColor=404EED)](https://discord.gg/BrMAZbEyXs)
 
-> **Desktop receiver for PadConnect** - turns UDP input from your phone into a real virtual gamepad
+> **Desktop receiver for ControlBridge** - turns UDP input from your phone into a real virtual gamepad
 
-PadConnectReceiver is the Desktop side companion to **[PadConnect](https://github.com/Ishan09811/PadConnect)**. It listens for low latency controller input streamed from the PadConnect Android app and exposes it to Desktop (and games) as a real virtual controller, using **ViGEm** on windows and native on linux.
+ControlBridgeReceiver is the Desktop side companion to **[ControlBridge](https://github.com/najisheheem05/ControlBridge)**. It listens for low latency controller input streamed from the ControlBridge Android app and exposes it to Desktop (and games) as a real virtual controller, using **ViGEm** on Windows.
 
 This is one half of a two-part project:
 
-- **[PadConnect](https://github.com/Ishan09811/PadConnect)** -> Android / client app (virtual controller UI)
-- **PadConnectReceiver** -> Desktop / receiver app (creates the virtual controller) *(this repo)*
+- **[ControlBridge](https://github.com/najisheheem05/ControlBridge)** -> Android / client app (virtual controller UI)
+- **ControlBridgeReceiver** -> Desktop / receiver app (creates the virtual controller) *(this repo)*
 
 ---
 
 ## How it works
 
 ```
-[ Android Phone ] -- UDP --> [ PadConnectReceiver (Windows) ] --> [ ViGEm ] --> Game
+[ Android Phone ] -- UDP --> [ ControlBridgeReceiver (Windows) ] --> [ ViGEm ] --> Game
 ```
 
-1. **[PadConnect](https://github.com/Ishan09811/PadConnect) (Android)** renders a virtual controller, captures input, and streams it over UDP on the local WiFi network.
-2. **PadConnectReceiver (Desktop)** listens for those UDP packets, executes the controller states, which exposes a virtual Xbox 360 (DualShock4 coming soon) controller to the OS.
+1. **[ControlBridge](https://github.com/najisheheem05/ControlBridge) (Android)** renders a virtual controller, captures input, and streams it over UDP on the local WiFi network.
+2. **ControlBridgeReceiver (Desktop)** listens for those UDP packets, executes the controller states, which exposes a virtual Xbox 360 controller to the OS. Supports up to 4 simultaneous players!
 
 Games see it as a *real* controller.
 
@@ -29,44 +29,43 @@ Games see it as a *real* controller.
 ## Features
 
 - Low-latency **UDP** input receiving
-- **Xbox 360** virtual controller support (working) **DualShock4** support planned
-- Built with **Kotlin Multiplatform (KMP)**
+- **Multi-device support**: Connect up to 4 devices simultaneously (Player 1 to 4)
+- **Xbox 360** virtual controller support via ViGEm
+- Built with **Rust** and **Slint UI**
 - Works over local WiFi, no internet required
-- Pairs with the [PadConnect](https://github.com/Ishan09811/PadConnect) Android app
+- Pairs with the [ControlBridge](https://github.com/najisheheem05/ControlBridge) Android app
 
 ---
 
 ## Requirements
 
-- Windows (10 / 11) / Linux
-- **ViGEmBus Driver** installed (only required for windows users)
-- JVM compatible environment (bundled with releases where applicable)
-- The [PadConnect](https://github.com/Ishan09811/PadConnect) Android app running on the same local WiFi network
+- Windows (10 / 11)
+- **ViGEmBus Driver** installed (required for virtual controller creation)
+- The [ControlBridge](https://github.com/najisheheem05/ControlBridge) Android app running on the same local WiFi network
 
 ---
 
 ## Getting Started
 
-### 1. Install ViGEm (only needed for windows users)
+### 1. Install ViGEmBus
 
-Download and install **ViGEmBus** from the [official ViGEm GitHub release](https://github.com/ViGEm/ViGEmBus/releases), then **reboot**.
+Download and install **ViGEmBus** from the [official ViGEmBus GitHub releases](https://github.com/nefarius/ViGEmBus/releases).
 
-### 2. Run PadConnectReceiver
+### 2. Run ControlBridgeReceiver
 
 ```
-PadConnectReceiver.exe (windows)
-PadConnectReceiver.AppImage (linux)
+ControlBridgeReceiver.exe
 ```
 
-This starts listening for UDP input and creates a virtual controller.
+This starts listening for UDP input and creates virtual controllers dynamically as devices connect.
 
-### 3. Connect from PadConnect (Android)
+### 3. Connect from ControlBridge (Android)
 
-- Install [PadConnect](https://github.com/Ishan09811/PadConnect) on your phone
-- Create a controller layout
-- start playing
+- Install [ControlBridge](https://github.com/najisheheem05/ControlBridge) on your phone
+- Connect over Wi-Fi
+- Start playing!
 
-> **Version compatibility:** PadConnectReceiver and PadConnect releases are paired, check each release's notes for the minimum required companion version before pairing an older client/receiver combination.
+> **Version compatibility:** ControlBridgeReceiver and ControlBridge releases are paired.
 
 ---
 

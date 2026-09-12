@@ -909,6 +909,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "controlbridge-receiver"
+version = "1.0.0-rc1"
+dependencies = [
+ "byteorder",
+ "crossbeam-channel",
+ "embed-resource",
+ "env_logger",
+ "log",
+ "slint",
+ "vigem-client",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3548,19 +3561,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36820e9051aca1014ddc75770aab4d68bc1e9e632f0f5627c4086bc216fb583b"
 dependencies = [
  "ttf-parser",
-]
-
-[[package]]
-name = "padconnect-receiver"
-version = "1.0.0-rc1"
-dependencies = [
- "byteorder",
- "crossbeam-channel",
- "embed-resource",
- "env_logger",
- "log",
- "slint",
- "vigem-client",
 ]
 
 [[package]]

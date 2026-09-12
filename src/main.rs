@@ -116,7 +116,7 @@ slint::slint! {
     }
 
     export component ReceiverScreen inherits Window {
-        title: "PadConnectReceiver";
+        title: "ControlBridgeReceiver";
         icon: @image-url("icons/icon.ico");
         preferred-width: 500px;
         preferred-height: 480px;
@@ -154,7 +154,7 @@ slint::slint! {
                     alignment: space-between;
 
                     Text {
-                        text: "PadConnect";
+                        text: "ControlBridge";
                         font-size: 18px;
                         color: #ffffff;
                         font-weight: 600;

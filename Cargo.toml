@@ -1,5 +1,5 @@
 [package]
-name = "padconnect-receiver"
+name = "controlbridge-receiver"
 version = "1.0.0-rc1"
 edition = "2024"
 
@@ -14,7 +14,7 @@ log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"
 vigem-client = { version = "0.1.4", features = ["unstable_xtarget_notification"] }
 
 [[bin]]
-name = "PadConnectReceiver"
+name = "ControlBridgeReceiver"
 path = "src/main.rs"
 
 [build-dependencies]
