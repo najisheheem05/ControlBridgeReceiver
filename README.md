@@ -1,15 +1,18 @@
-# ControlBridgeReceiver
+<p align="center">
+  <img src="icons/512x512.png" alt="ControlBridge Logo" width="100">
+</p>
 
-[![Discord](https://img.shields.io/discord/1496412688685858846?label=&logo=discord&logoColor=ffffff&color=5865F2&labelColor=404EED)](https://discord.gg/BrMAZbEyXs)
+<h1 align="center"> ControlBridgeReceiver </h1>
 
 > **Desktop receiver for ControlBridge** - turns UDP input from your phone into a real virtual gamepad
+> **Note:** ControlBridge is a feature fork of [PadConnectReceiver](https://github.com/PadConnectApp/PadConnectReceiver), that allows up to 4 connections simultaneously.
 
 ControlBridgeReceiver is the Desktop side companion to **[ControlBridge](https://github.com/najisheheem05/ControlBridge)**. It listens for low latency controller input streamed from the ControlBridge Android app and exposes it to Desktop (and games) as a real virtual controller, using **ViGEm** on Windows.
 
 This is one half of a two-part project:
 
 - **[ControlBridge](https://github.com/najisheheem05/ControlBridge)** -> Android / client app (virtual controller UI)
-- **ControlBridgeReceiver** -> Desktop / receiver app (creates the virtual controller) *(this repo)*
+- **ControlBridgeReceiver** -> Desktop / receiver app (creates the virtual controller) _(this repo)_
 
 ---
 
@@ -22,7 +25,7 @@ This is one half of a two-part project:
 1. **[ControlBridge](https://github.com/najisheheem05/ControlBridge) (Android)** renders a virtual controller, captures input, and streams it over UDP on the local WiFi network.
 2. **ControlBridgeReceiver (Desktop)** listens for those UDP packets, executes the controller states, which exposes a virtual Xbox 360 controller to the OS. Supports up to 4 simultaneous players!
 
-Games see it as a *real* controller.
+Games see it as a _real_ controller.
 
 ---
 
@@ -75,6 +78,7 @@ This starts listening for UDP input and creates virtual controllers dynamically 
 - Shoulder buttons
 - Triggers
 - Analog Sticks
+- DPAD buttons
 
 ## Notes
 
@@ -88,13 +92,10 @@ This starts listening for UDP input and creates virtual controllers dynamically 
 
 - **ViGEm** — Virtual Gamepad Emulation Framework for windows support
 - Kotlin & Kotlin Multiplatform teams
+- [PadConnectReceiver](https://github.com/PadConnectApp/PadConnectReceiver) - Parent repo
 
 ---
 
 ## License
 
 This project is licensed under the GNU General Public License v3.0 ([GPL-3.0-only](LICENSE)).
-
----
-
-> Built for low latency, simplicity, and fun.
