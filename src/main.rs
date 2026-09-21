@@ -213,13 +213,42 @@ slint::slint! {
     }
 }
 
-fn main() -> Result<(), slint::PlatformError> {
+fn main() {
+    if let Err(e) = run() {
+        // Safety net for double-click launches: without this, the console
+        // window closes the instant the process exits and the error is lost.
+        eprintln!();
+        eprintln!("FATAL: {}", e);
+        eprintln!();
+        eprintln!("Press Enter to exit...");
+        let _ = std::io::stdin().read_line(&mut String::new());
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), slint::PlatformError> {
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Trace)
         .init();
 
     let ui = ReceiverScreen::new()?;
     let ui_handle = ui.as_weak();
+
+    // Preflight check: warn immediately if the ViGEmBus driver is missing,
+    // so the user sees the download link in the console even before any
+    // controller connects (controller-time setup would otherwise fail later).
+    #[cfg(target_os = "windows")]
+    {
+        if let Err(e) = vigem_client::Client::connect() {
+            if crate::input::xinput::is_bus_missing(&e) {
+                crate::input::xinput::report_vigem_missing("Startup check", &e);
+                ui.set_header_status("ViGEmBus missing!".into());
+                ui.set_header_status_color(slint::Color::from_rgb_u8(239, 68, 68));
+            } else {
+                log::warn!("ViGEmBus check failed: {:?}", e);
+            }
+        }
+    }
 
     let view_model = ReceiverViewModel::new({
         let ui_handle = ui_handle.clone();

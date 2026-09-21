@@ -15,8 +15,73 @@ pub trait InputExecutor: Send {
     fn set_rumble_callback(&mut self, callback: Box<dyn Fn(u8, u8) + Send>);
 }
 
+/// Download page for the ViGEmBus driver (Windows only).
+#[cfg(target_os = "windows")]
+pub const VIGEM_DOWNLOAD_URL: &str = "https://github.com/nefarius/ViGEmBus/releases/latest";
+
+/// Returns `true` if the error means the ViGEmBus driver is not installed.
+#[cfg(target_os = "windows")]
+pub fn is_bus_missing(e: &vigem_client::Error) -> bool {
+    matches!(
+        e,
+        vigem_client::Error::BusNotFound
+            | vigem_client::Error::BusAccessFailed(_)
+            | vigem_client::Error::BusVersionMismatch
+    )
+}
+
+/// Prints a clear "ViGEmBus not found" message with a download link to the
+/// console (cmd) and opens the download page in the default browser.
+///
+/// The plain URL is clickable in Windows Terminal / modern consoles.
+#[cfg(target_os = "windows")]
+pub fn report_vigem_missing(context: &str, e: &vigem_client::Error) {
+    use log::error;
+
+    error!("{}: ViGEmBus not found ({:?})", context, e);
+
+    eprintln!();
+    eprintln!("================================================================");
+    eprintln!("  ERROR: ViGEmBus driver not found");
+    eprintln!("  {} failed: {:?}", context, e);
+    eprintln!();
+    eprintln!("  Virtual controllers need the ViGEmBus driver to work.");
+    eprintln!("  Download from here: {}", VIGEM_DOWNLOAD_URL);
+    eprintln!("  Install it, then restart ControlBridgeReceiver.");
+    eprintln!("  Opening the download page in your browser in 10 seconds...");
+    eprintln!("================================================================");
+    eprintln!();
+
+    // Give the user time to read the message before the browser pops up.
+    // Runs on a background thread so the app itself never blocks.
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        open_download_page();
+    });
+}
+
+/// Opens the ViGEmBus download page in the default browser (Windows).
+#[cfg(target_os = "windows")]
+pub fn open_download_page() {
+    // `start "" <url>` opens the URL with the default browser.
+    let started = std::process::Command::new("cmd")
+        .args(["/C", "start", "", VIGEM_DOWNLOAD_URL])
+        .spawn()
+        .is_ok();
+
+    if !started {
+        // Fallback that also delegates to the default browser.
+        let _ = std::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", VIGEM_DOWNLOAD_URL])
+            .spawn();
+    }
+}
+
 #[cfg(target_os = "windows")]
 pub struct XInputExecutor {
+    // Kept alive for the executor's lifetime: dropping it would close the
+    // underlying bus handle out from under the cloned target handle.
+    #[allow(dead_code)]
     client: vigem_client::Client,
     target: vigem_client::Xbox360Wired<vigem_client::Client>,
 }

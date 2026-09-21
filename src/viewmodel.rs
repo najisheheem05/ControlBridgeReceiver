@@ -18,7 +18,7 @@ use log::info;
 use crate::data::GamepadState;
 use crate::input::xinput::InputExecutor;
 #[cfg(target_os = "windows")]
-use crate::input::xinput::XInputExecutor;
+use crate::input::xinput::{report_vigem_missing, XInputExecutor};
 use crate::session::{SessionManager, SlotAssignment, MAX_PLAYERS};
 use crate::utils::network::{DiscoveryServer, UdpReceiver, FEATURE_LATENCY};
 #[cfg(target_os = "windows")]
@@ -46,6 +46,12 @@ impl ReceiverViewModel {
         let executors: Arc<Vec<Mutex<Option<Box<dyn InputExecutor>>>>> =
             Arc::new((0..MAX_PLAYERS).map(|_| Mutex::new(None)).collect());
 
+        // Last ViGEm (re)connect attempt per slot, in millis since epoch.
+        // Throttles retries so a missing driver doesn't trigger a device
+        // enumeration + log line on every incoming packet.
+        #[cfg(target_os = "windows")]
+        let vigem_retry_ms: Arc<Mutex<[u64; MAX_PLAYERS]>> = Arc::new(Mutex::new([0; MAX_PLAYERS]));
+
         // --- Start UDP receiver ---
         {
             let session = Arc::clone(&session);
@@ -53,12 +59,27 @@ impl ReceiverViewModel {
             let executors = Arc::clone(&executors);
             let ui_cb = Arc::clone(&on_ui_update);
             let is_full = Arc::clone(&is_full);
+            #[cfg(target_os = "windows")]
+            let vigem_retry_ms = Arc::clone(&vigem_retry_ms);
 
             receiver.start(move |src, state, sent_time| {
                 match session.get_or_assign(src) {
                     SlotAssignment::Existing(slot) => {
                         session.touch(slot);
 
+                        // Retry executor setup if a previous attempt failed
+                        // (e.g. ViGEmBus was installed after the first packet),
+                        // throttled to one attempt per slot every 5 seconds.
+                        #[cfg(target_os = "windows")]
+                        if executors[slot].lock().unwrap().is_none() {
+                            let now = now_ms();
+                            let mut retry = vigem_retry_ms.lock().unwrap();
+                            if now.saturating_sub(retry[slot]) >= 5000 {
+                                retry[slot] = now;
+                                drop(retry);
+                                setup_slot(slot, &executors, &receiver_ref, &session);
+                            }
+                        }
                         if let Some(exec) = executors[slot].lock().unwrap().as_mut() {
                             exec.submit(&state);
                         }
@@ -164,16 +185,40 @@ impl ReceiverViewModel {
 
 /// Creates a new platform-specific input executor for the given slot and
 /// wires up its rumble callback to send packets back through the UDP receiver.
+///
+/// Returns `false` when the executor could not be created (e.g. ViGEmBus is
+/// missing), so callers can retry later instead of panicking.
 fn setup_slot(
     slot: usize,
     executors: &Arc<Vec<Mutex<Option<Box<dyn InputExecutor>>>>>,
     receiver: &Arc<UdpReceiver>,
     session: &Arc<SessionManager>,
-) {
+) -> bool {
     #[cfg(target_os = "windows")]
     {
         let mut guard = executors[slot].lock().unwrap();
-        let mut executor = Box::new(XInputExecutor::new().expect("ViGEm failed"));
+        // Don't recreate an executor that already exists.
+        if guard.is_some() {
+            return true;
+        }
+        let mut executor = match XInputExecutor::new() {
+            Ok(exec) => Box::new(exec),
+            Err(e) => {
+                // Only open the browser once per process; repeated controller
+                // packets must not spam browser tabs.
+                static REPORTED: AtomicBool = AtomicBool::new(false);
+                if !REPORTED.swap(true, Ordering::SeqCst) {
+                    report_vigem_missing("ViGEmBus driver not found", &e);
+                } else {
+                    log::error!("Player {}: ViGEmBus driver not found ({:?})", slot + 1, e);
+                    log::error!(
+                        "Download from here: {}",
+                        crate::input::xinput::VIGEM_DOWNLOAD_URL
+                    );
+                }
+                return false;
+            }
+        };
 
         let receiver_clone = Arc::clone(receiver);
         let session_clone = Arc::clone(session);
@@ -188,6 +233,7 @@ fn setup_slot(
         }));
 
         *guard = Some(executor);
+        true
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -211,4 +257,12 @@ fn send_latency_response(receiver: &UdpReceiver, target: SocketAddr, sent_time: 
     let _ = response.write_i64::<LittleEndian>(now_nanos);
 
     receiver.send_to(&response, target);
+}
+
+#[cfg(target_os = "windows")]
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
 }
