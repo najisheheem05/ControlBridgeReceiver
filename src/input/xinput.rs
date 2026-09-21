@@ -33,21 +33,12 @@ pub fn is_bus_missing(e: &vigem_client::Error) -> bool {
 /// Prints a clear "ViGEmBus not found" message with a download link to the
 /// console (cmd) and opens the download page in the default browser.
 ///
-/// `cmd` itself can't render inline hyperlinks in the classic console host,
-/// but Windows Terminal (and the new conhost) makes plain URLs clickable, so
-/// we print both an OSC 8 clickable hyperlink and the plain URL as fallback.
+/// The plain URL is clickable in Windows Terminal / modern consoles.
 #[cfg(target_os = "windows")]
 pub fn report_vigem_missing(context: &str, e: &vigem_client::Error) {
     use log::error;
 
     error!("{}: ViGEmBus not found ({:?})", context, e);
-
-    // OSC 8 hyperlink: clickable in Windows Terminal / modern consoles,
-    // falls back to visible link text elsewhere.
-    let hyperlink = format!(
-        "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
-        VIGEM_DOWNLOAD_URL, VIGEM_DOWNLOAD_URL
-    );
 
     eprintln!();
     eprintln!("================================================================");
@@ -55,8 +46,7 @@ pub fn report_vigem_missing(context: &str, e: &vigem_client::Error) {
     eprintln!("  {} failed: {:?}", context, e);
     eprintln!();
     eprintln!("  Virtual controllers need the ViGEmBus driver to work.");
-    eprintln!("  Download from here: {}", hyperlink);
-    eprintln!("  ({})", VIGEM_DOWNLOAD_URL);
+    eprintln!("  Download from here: {}", VIGEM_DOWNLOAD_URL);
     eprintln!("  Install it, then restart ControlBridgeReceiver.");
     eprintln!("  Opening the download page in your browser in 10 seconds...");
     eprintln!("================================================================");
