@@ -221,6 +221,22 @@ fn main() -> Result<(), slint::PlatformError> {
     let ui = ReceiverScreen::new()?;
     let ui_handle = ui.as_weak();
 
+    // Preflight check: warn immediately if the ViGEmBus driver is missing,
+    // so the user sees the download link in the console even before any
+    // controller connects (controller-time setup would otherwise fail later).
+    #[cfg(target_os = "windows")]
+    {
+        if let Err(e) = vigem_client::Client::connect() {
+            if crate::input::xinput::is_bus_missing(&e) {
+                crate::input::xinput::report_vigem_missing("Startup check", &e);
+                ui.set_header_status("ViGEmBus missing!".into());
+                ui.set_header_status_color(slint::Color::from_rgb_u8(239, 68, 68));
+            } else {
+                log::warn!("ViGEmBus check failed: {:?}", e);
+            }
+        }
+    }
+
     let view_model = ReceiverViewModel::new({
         let ui_handle = ui_handle.clone();
 
