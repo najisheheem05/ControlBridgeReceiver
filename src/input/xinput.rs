@@ -58,11 +58,16 @@ pub fn report_vigem_missing(context: &str, e: &vigem_client::Error) {
     eprintln!("  Download from here: {}", hyperlink);
     eprintln!("  ({})", VIGEM_DOWNLOAD_URL);
     eprintln!("  Install it, then restart ControlBridgeReceiver.");
-    eprintln!("  Opening the download page in your browser...");
+    eprintln!("  Opening the download page in your browser in 10 seconds...");
     eprintln!("================================================================");
     eprintln!();
 
-    open_download_page();
+    // Give the user time to read the message before the browser pops up.
+    // Runs on a background thread so the app itself never blocks.
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        open_download_page();
+    });
 }
 
 /// Opens the ViGEmBus download page in the default browser (Windows).
