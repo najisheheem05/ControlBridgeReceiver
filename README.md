@@ -83,13 +83,70 @@ ControlBridgeReceiver.exe    # Windows
 
 This starts listening for UDP input and creates virtual controllers dynamically as devices connect.
 
-### 3. Connect from ControlBridge (Android)
+### Connect from ControlBridge (Android)
 
 - Install [ControlBridge](https://github.com/najisheheem05/ControlBridge) on your phone
 - Connect over Wi-Fi
 - Start playing!
 
+> If the receiver is not showing up on the phone, see the [firewall section](#firewall).
+
 > **Version compatibility:** ControlBridgeReceiver and ControlBridge releases are paired.
+
+---
+
+## Firewall
+
+If the phone shows no receiver, the desktop firewall is most likely blocking
+the two UDP ports the app uses: `8083` for discovery and `8082` for input.
+
+### Check if the firewall is active
+
+- **firewalld:** `systemctl is-active firewalld`
+- **ufw:** `sudo ufw status`
+- **Windows:** Windows Security -> Firewall & network protection
+
+### Deactivate it for testing
+
+- **firewalld:** `sudo systemctl stop firewalld`
+- **ufw:** `sudo ufw disable`
+- **Windows:** turn off the firewall for the **Private** network
+
+### Re-enable it after testing
+
+- **firewalld:** `sudo systemctl start firewalld`
+- **ufw:** `sudo ufw enable`
+- **Windows:** turn the firewall back on
+
+### Why this happens
+
+The phone sends a UDP broadcast to `8083` to find the receiver, then streams
+controller input to `8082`. If either port is blocked, the phone cannot detect
+the receiver or the controller does not move. The protocol is unauthenticated:
+any device on the same network that can reach these ports can send controller
+input. Do not port-forward them or disable the firewall on public Wi-Fi. On your
+own network, prefer allowing only the phone's IP:
+
+```sh
+# firewalld
+sudo firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv4" source address="PHONE_IP/32" port port="8083" protocol="udp" accept'
+sudo firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv4" source address="PHONE_IP/32" port port="8082" protocol="udp" accept'
+sudo firewall-cmd --reload
+
+# ufw
+sudo ufw allow from PHONE_IP to any port 8083 proto udp
+sudo ufw allow from PHONE_IP to any port 8082 proto udp
+```
+
+These rules are low risk: only these two UDP ports are opened, and only to the
+phone's IP. The main risk is the IP changing: if DHCP reassigns `PHONE_IP` to
+another device (or the phone NATs other devices behind that address), that
+device could send controller input. Reserve a fixed lease for the phone, keep
+the source as a single IP rather than a whole subnet, and remove the rules when
+you stop using the receiver.
+
+If it still fails, make sure the phone and desktop are on the same network and
+that the router/hotspot does not have **client isolation** enabled.
 
 ---
 
@@ -105,9 +162,10 @@ This starts listening for UDP input and creates virtual controllers dynamically 
 ## Notes
 
 - Works best on local WiFi
-- Firewall may need to allow the UDP port used for input streaming
+- The desktop firewall must allow inbound UDP `8082` and `8083` from the phone; see the [firewall section](#firewall) if the receiver is not detected
 - ViGEm is only required for Windows; Linux uses the in-kernel uinput API
 - The Linux virtual pad reports itself as a wired Xbox 360 controller, so SDL, Steam and Wine/Proton use the standard Xbox mapping
+- The protocol is unauthenticated by design for low latency; keep the firewall rules limited to your phone and never expose the ports to the internet
 
 ---
 

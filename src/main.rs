@@ -142,18 +142,31 @@ slint::slint! {
                 height: 56px;
 
                 HorizontalBox {
-                    padding: 16px;
+                    padding-left: 16px;
+                    padding-right: 16px;
                     alignment: space-between;
 
-                    Text {
-                        text: "ControlBridge";
-                        font-size: 18px;
-                        color: #ffffff;
-                        font-weight: 600;
-                        vertical-alignment: center;
+                    HorizontalBox {
+                        spacing: 10px;
+                        alignment: start;
+
+                        Image {
+                            source: @image-url("icons/512x512.png");
+                            width: 24px;
+                            height: 24px;
+                        }
+
+                        Text {
+                            text: "ControlBridge";
+                            font-size: 18px;
+                            color: #ffffff;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
                     }
 
                     Rectangle {
+                        height: 28px;
                         background: root.header-status-color.transparentize(85%);
                         border-radius: 16px;
                         border-width: 1px;
@@ -211,6 +224,11 @@ fn main() -> Result<(), slint::PlatformError> {
         .init();
 
     let ui = ReceiverScreen::new()?;
+
+    if let Err(e) = slint::set_xdg_app_id("ControlBridgeReceiver") {
+        log::warn!("Failed to set desktop app id: {e}");
+    }
+
     let ui_handle = ui.as_weak();
 
     // Preflight check: warn immediately if the ViGEmBus driver is missing,
