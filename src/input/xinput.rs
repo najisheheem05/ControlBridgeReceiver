@@ -1,19 +1,10 @@
-/*
- * Copyright (C) 2026 Ishan
- *
- * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3 only.
- *
- * This program is distributed without any warranty. See the GNU General Public License for more details.
- */
-
+#[cfg(target_os = "windows")]
 use crate::data::GamepadState;
-use log::{warn, debug, trace};
+#[cfg(target_os = "windows")]
+use log::{debug, trace, warn};
 
-pub trait InputExecutor: Send {
-    fn submit(&mut self, state: &GamepadState);
-    fn shutdown(&mut self);
-    fn set_rumble_callback(&mut self, callback: Box<dyn Fn(u8, u8) + Send>);
-}
+#[cfg(target_os = "windows")]
+use super::InputExecutor;
 
 /// Download page for the ViGEmBus driver (Windows only).
 #[cfg(target_os = "windows")]

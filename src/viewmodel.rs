@@ -1,11 +1,3 @@
-/*
- * Copyright (C) 2026 Ishan
- *
- * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3 only.
- *
- * This program is distributed without any warranty. See the GNU General Public License for more details.
- */
-
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -16,13 +8,13 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use log::info;
 
 use crate::data::GamepadState;
-use crate::input::xinput::InputExecutor;
+use crate::input::InputExecutor;
+#[cfg(target_os = "linux")]
+use crate::input::uinput::{report_uinput_missing, UinputExecutor, UINPUT_HELP};
 #[cfg(target_os = "windows")]
 use crate::input::xinput::{report_vigem_missing, XInputExecutor};
 use crate::session::{SessionManager, SlotAssignment, MAX_PLAYERS};
-use crate::utils::network::{DiscoveryServer, UdpReceiver, FEATURE_LATENCY};
-#[cfg(target_os = "windows")]
-use crate::utils::network::FEATURE_RUMBLE;
+use crate::utils::network::{DiscoveryServer, UdpReceiver, FEATURE_LATENCY, FEATURE_RUMBLE};
 
 pub struct ReceiverViewModel {
     discovery: Arc<DiscoveryServer>,
@@ -39,18 +31,18 @@ impl ReceiverViewModel {
         let on_ui_update = Arc::new(on_ui_update);
 
         let session = Arc::new(SessionManager::new());
-        let discovery = Arc::new(DiscoveryServer::new(8083));
+        let discovery = Arc::new(DiscoveryServer::new(8083, crate::input::SUPPORTED_FEATURES));
         let receiver = Arc::new(UdpReceiver::new(8082));
         let is_full = Arc::new(AtomicBool::new(false));
 
         let executors: Arc<Vec<Mutex<Option<Box<dyn InputExecutor>>>>> =
             Arc::new((0..MAX_PLAYERS).map(|_| Mutex::new(None)).collect());
 
-        // Last ViGEm (re)connect attempt per slot, in millis since epoch.
-        // Throttles retries so a missing driver doesn't trigger a device
-        // enumeration + log line on every incoming packet.
-        #[cfg(target_os = "windows")]
-        let vigem_retry_ms: Arc<Mutex<[u64; MAX_PLAYERS]>> = Arc::new(Mutex::new([0; MAX_PLAYERS]));
+        // Last executor (re)connect attempt per slot, in millis since epoch.
+        // Throttles retries so a missing driver/device doesn't trigger a
+        // device enumeration + log line on every incoming packet.
+        let executor_retry_ms: Arc<Mutex<[u64; MAX_PLAYERS]>> =
+            Arc::new(Mutex::new([0; MAX_PLAYERS]));
 
         // --- Start UDP receiver ---
         {
@@ -59,8 +51,7 @@ impl ReceiverViewModel {
             let executors = Arc::clone(&executors);
             let ui_cb = Arc::clone(&on_ui_update);
             let is_full = Arc::clone(&is_full);
-            #[cfg(target_os = "windows")]
-            let vigem_retry_ms = Arc::clone(&vigem_retry_ms);
+            let executor_retry_ms = Arc::clone(&executor_retry_ms);
 
             receiver.start(move |src, state, sent_time| {
                 match session.get_or_assign(src) {
@@ -68,12 +59,12 @@ impl ReceiverViewModel {
                         session.touch(slot);
 
                         // Retry executor setup if a previous attempt failed
-                        // (e.g. ViGEmBus was installed after the first packet),
-                        // throttled to one attempt per slot every 5 seconds.
-                        #[cfg(target_os = "windows")]
+                        // (e.g. ViGEmBus was installed or uinput became
+                        // accessible after the first packet), throttled to one
+                        // attempt per slot every 5 seconds.
                         if executors[slot].lock().unwrap().is_none() {
                             let now = now_ms();
-                            let mut retry = vigem_retry_ms.lock().unwrap();
+                            let mut retry = executor_retry_ms.lock().unwrap();
                             if now.saturating_sub(retry[slot]) >= 5000 {
                                 retry[slot] = now;
                                 drop(retry);
@@ -187,60 +178,101 @@ impl ReceiverViewModel {
 /// wires up its rumble callback to send packets back through the UDP receiver.
 ///
 /// Returns `false` when the executor could not be created (e.g. ViGEmBus is
-/// missing), so callers can retry later instead of panicking.
+/// missing or `/dev/uinput` is inaccessible), so callers can retry later
+/// instead of panicking.
 fn setup_slot(
     slot: usize,
     executors: &Arc<Vec<Mutex<Option<Box<dyn InputExecutor>>>>>,
     receiver: &Arc<UdpReceiver>,
     session: &Arc<SessionManager>,
 ) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        let mut guard = executors[slot].lock().unwrap();
-        // Don't recreate an executor that already exists.
-        if guard.is_some() {
-            return true;
+    let mut guard = executors[slot].lock().unwrap();
+    // Don't recreate an executor that already exists.
+    if guard.is_some() {
+        return true;
+    }
+
+    let mut executor = match create_executor(slot) {
+        Ok(executor) => executor,
+        Err(error) => {
+            log_executor_error(slot, &error);
+            return false;
         }
-        let mut executor = match XInputExecutor::new() {
-            Ok(exec) => Box::new(exec),
-            Err(e) => {
-                // Only open the browser once per process; repeated controller
-                // packets must not spam browser tabs.
-                static REPORTED: AtomicBool = AtomicBool::new(false);
-                if !REPORTED.swap(true, Ordering::SeqCst) {
-                    report_vigem_missing("ViGEmBus driver not found", &e);
-                } else {
-                    log::error!("Player {}: ViGEmBus driver not found ({:?})", slot + 1, e);
-                    log::error!(
-                        "Download from here: {}",
-                        crate::input::xinput::VIGEM_DOWNLOAD_URL
-                    );
-                }
-                return false;
-            }
-        };
+    };
 
-        let receiver_clone = Arc::clone(receiver);
-        let session_clone = Arc::clone(session);
+    let receiver_clone = Arc::clone(receiver);
+    let session_clone = Arc::clone(session);
 
-        executor.set_rumble_callback(Box::new(move |large, small| {
-            if session_clone.get_features(slot) & FEATURE_RUMBLE != 0 {
-                if let Some(addr) = session_clone.get_addr(slot) {
-                    let packet = [1u8, large, small];
-                    receiver_clone.send_to(&packet, addr);
-                }
-            }
-        }));
+    executor.set_rumble_callback(Box::new(move |large, small| {
+        if session_clone.get_features(slot) & FEATURE_RUMBLE != 0
+            && let Some(addr) = session_clone.get_addr(slot)
+        {
+            let packet = [1u8, large, small];
+            receiver_clone.send_to(&packet, addr);
+        }
+    }));
 
-        *guard = Some(executor);
-        true
+    *guard = Some(executor);
+    true
+}
+
+#[cfg(target_os = "windows")]
+fn create_executor(slot: usize) -> Result<Box<dyn InputExecutor>, vigem_client::Error> {
+    let _ = slot;
+    XInputExecutor::new().map(|executor| Box::new(executor) as Box<dyn InputExecutor>)
+}
+
+#[cfg(target_os = "linux")]
+fn create_executor(slot: usize) -> Result<Box<dyn InputExecutor>, std::io::Error> {
+    UinputExecutor::new(slot).map(|executor| Box::new(executor) as Box<dyn InputExecutor>)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+fn create_executor(_slot: usize) -> Result<Box<dyn InputExecutor>, std::io::Error> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "No virtual gamepad backend for this platform",
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn log_executor_error(slot: usize, error: &vigem_client::Error) {
+    // Only open the browser once per process; repeated controller packets
+    // must not spam browser tabs.
+    static REPORTED: AtomicBool = AtomicBool::new(false);
+    if !REPORTED.swap(true, Ordering::SeqCst) {
+        report_vigem_missing("ViGEmBus driver not found", error);
+    } else {
+        log::error!("Player {}: ViGEmBus driver not found ({:?})", slot + 1, error);
+        log::error!(
+            "Download from here: {}",
+            crate::input::xinput::VIGEM_DOWNLOAD_URL
+        );
     }
+}
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (slot, executors, receiver, session);
-        unimplemented!("Linux executor is not implemented yet");
+#[cfg(target_os = "linux")]
+fn log_executor_error(slot: usize, error: &std::io::Error) {
+    static REPORTED: AtomicBool = AtomicBool::new(false);
+    if !REPORTED.swap(true, Ordering::SeqCst) {
+        report_uinput_missing("Virtual gamepad creation failed", error);
+    } else {
+        log::error!(
+            "Player {}: cannot create virtual gamepad ({})",
+            slot + 1,
+            error
+        );
+        log::error!("{}", UINPUT_HELP);
     }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+fn log_executor_error(slot: usize, error: &std::io::Error) {
+    log::error!(
+        "Player {}: cannot create virtual gamepad ({})",
+        slot + 1,
+        error
+    );
 }
 
 /// Builds and sends a latency echo packet (type 2) back to the client.
@@ -259,7 +291,6 @@ fn send_latency_response(receiver: &UdpReceiver, target: SocketAddr, sent_time: 
     receiver.send_to(&response, target);
 }
 
-#[cfg(target_os = "windows")]
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

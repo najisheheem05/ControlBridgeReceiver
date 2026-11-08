@@ -1,11 +1,3 @@
-/*
- * Copyright (C) 2026 Ishan
- *
- * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3 only.
- *
- * This program is distributed without any warranty. See the GNU General Public License for more details.
- */
-
 mod data;
 mod input;
 mod session;
@@ -234,6 +226,17 @@ fn main() -> Result<(), slint::PlatformError> {
             } else {
                 log::warn!("ViGEmBus check failed: {:?}", e);
             }
+        }
+    }
+
+    // Preflight check: fail fast when /dev/uinput is unavailable so the user
+    // sees actionable instructions before any controller connects.
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(e) = crate::input::uinput::check_uinput() {
+            crate::input::uinput::report_uinput_missing("Startup check", &e);
+            ui.set_header_status("uinput unavailable!".into());
+            ui.set_header_status_color(slint::Color::from_rgb_u8(239, 68, 68));
         }
     }
 

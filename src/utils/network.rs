@@ -1,11 +1,3 @@
-/*
- * Copyright (C) 2026 Ishan
- *
- * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3 only.
- *
- * This program is distributed without any warranty. See the GNU General Public License for more details.
- */
-
 use std::io::Cursor;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,13 +15,15 @@ pub const FEATURE_LATENCY: i32 = 1 << 1;
 
 pub struct DiscoveryServer {
     port: u16,
+    supported_features: i32,
     is_running: Arc<AtomicBool>,
 }
 
 impl DiscoveryServer {
-    pub fn new(port: u16) -> Self {
+    pub fn new(port: u16, supported_features: i32) -> Self {
         Self {
             port,
+            supported_features,
             is_running: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -57,6 +51,7 @@ impl DiscoveryServer {
             .set_read_timeout(Some(std::time::Duration::from_millis(500)))
             .unwrap();
         let running = Arc::clone(&self.is_running);
+        let supported_features = self.supported_features;
 
         thread::spawn(move || {
             let mut buf = [0u8; 256];
@@ -80,7 +75,7 @@ impl DiscoveryServer {
                         }
 
                         let agreed_version = client_version.min(MIN_SUPPORTED_VERSION);
-                        let agreed_features = client_features & (FEATURE_RUMBLE | FEATURE_LATENCY);
+                        let agreed_features = client_features & supported_features;
 
                         let response = format!(
                             "PADCONNECT_HERE:8082:{}:{}",
