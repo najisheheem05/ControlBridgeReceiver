@@ -1,11 +1,3 @@
-/*
- * Copyright (C) 2026 Ishan
- *
- * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3 only.
- *
- * This program is distributed without any warranty. See the GNU General Public License for more details.
- */
-
 mod data;
 mod input;
 mod session;
@@ -150,18 +142,31 @@ slint::slint! {
                 height: 56px;
 
                 HorizontalBox {
-                    padding: 16px;
+                    padding-left: 16px;
+                    padding-right: 16px;
                     alignment: space-between;
 
-                    Text {
-                        text: "ControlBridge";
-                        font-size: 18px;
-                        color: #ffffff;
-                        font-weight: 600;
-                        vertical-alignment: center;
+                    HorizontalBox {
+                        spacing: 10px;
+                        alignment: start;
+
+                        Image {
+                            source: @image-url("icons/512x512.png");
+                            width: 24px;
+                            height: 24px;
+                        }
+
+                        Text {
+                            text: "ControlBridge";
+                            font-size: 18px;
+                            color: #ffffff;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
                     }
 
                     Rectangle {
+                        height: 28px;
                         background: root.header-status-color.transparentize(85%);
                         border-radius: 16px;
                         border-width: 1px;
@@ -232,6 +237,11 @@ fn run() -> Result<(), slint::PlatformError> {
         .init();
 
     let ui = ReceiverScreen::new()?;
+
+    if let Err(e) = slint::set_xdg_app_id("ControlBridgeReceiver") {
+        log::warn!("Failed to set desktop app id: {e}");
+    }
+
     let ui_handle = ui.as_weak();
 
     // Preflight check: warn immediately if the ViGEmBus driver is missing,
@@ -250,6 +260,16 @@ fn run() -> Result<(), slint::PlatformError> {
         }
     }
 
+    // Preflight check: fail fast when /dev/uinput is unavailable so the user
+    // sees actionable instructions before any controller connects.
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(e) = crate::input::uinput::check_uinput() {
+            crate::input::uinput::report_uinput_missing("Startup check", &e);
+            ui.set_header_status("uinput unavailable!".into());
+            ui.set_header_status_color(slint::Color::from_rgb_u8(239, 68, 68));
+        }
+    }
     let view_model = ReceiverViewModel::new({
         let ui_handle = ui_handle.clone();
 
