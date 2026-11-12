@@ -42,54 +42,49 @@ Games see it as a _real_ controller.
 
 ## Requirements
 
-- **Windows 10 / 11** with the **ViGEmBus Driver** installed, or **Linux** with the kernel `uinput` module
+- **Windows 10 / 11** with the **ViGEmBus** driver installed
+- **Linux** with the kernel `uinput` module
 - The [ControlBridge](https://github.com/najisheheem05/ControlBridge) Android app running on the same local WiFi network
 
 ---
 
 ## Getting Started
 
-### Windows: install ViGEmBus
+### Windows
 
-Download and install **ViGEmBus** from the [official ViGEmBus GitHub releases](https://github.com/nefarius/ViGEmBus/releases).
+1. Install the **ViGEmBus** driver from the [official ViGEmBus GitHub releases](https://github.com/nefarius/ViGEmBus/releases).
+2. Run `ControlBridgeReceiver.exe`. It starts listening for UDP input and creates virtual controllers dynamically as devices connect.
+3. Allow inbound UDP `8082` and `8083` from your phone in Windows Firewall if prompted (see the [firewall section](#firewall)).
 
-### Linux: enable uinput
+### Linux
 
-Load the kernel module (most desktop distributions ship it and load it automatically):
+1. Load the `uinput` kernel module (most desktop distributions ship it and load it automatically):
 
-```sh
-sudo modprobe uinput
-```
+   ```sh
+   sudo modprobe uinput
+   ```
 
-The receiver needs read/write access to `/dev/uinput`. On a normal desktop session systemd grants this through uaccess. If access is denied, add a udev rule:
+2. Make sure the receiver can read/write `/dev/uinput`. On a normal desktop session systemd grants this through uaccess. If access is denied, add a udev rule:
 
-```udev
-KERNEL=="uinput", SUBSYSTEM=="misc", OPTIONS+="static_node=uinput", TAG+="uaccess"
-```
+   ```udev
+   KERNEL=="uinput", SUBSYSTEM=="misc", OPTIONS+="static_node=uinput", TAG+="uaccess"
+   ```
 
-Then reload the rules and re-connect the module:
+   Then reload the rules and re-connect the module:
 
-```sh
-sudo udevadm control --reload-rules && sudo udevadm trigger
-sudo modprobe -r uinput && sudo modprobe uinput
-```
+   ```sh
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   sudo modprobe -r uinput && sudo modprobe uinput
+   ```
 
-### Run ControlBridgeReceiver
-
-```
-ControlBridgeReceiver        # Linux
-ControlBridgeReceiver.exe    # Windows
-```
-
-This starts listening for UDP input and creates virtual controllers dynamically as devices connect.
+3. Run `ControlBridgeReceiver`. It starts listening for UDP input and creates virtual controllers dynamically as devices connect.
+4. Allow inbound UDP `8082` and `8083` from your phone in your firewall (see the [firewall section](#firewall)).
 
 ### Connect from ControlBridge (Android)
 
 - Install [ControlBridge](https://github.com/najisheheem05/ControlBridge) on your phone
 - Connect over Wi-Fi
 - Start playing!
-
-> If the receiver is not showing up on the phone, see the [firewall section](#firewall).
 
 > **Version compatibility:** ControlBridgeReceiver and ControlBridge releases are paired.
 
