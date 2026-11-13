@@ -4,7 +4,9 @@
 
 <h1 align="center"> ControlBridgeReceiver </h1>
 
-> **Desktop receiver for ControlBridge** - turns UDP input from your phone into a real virtual gamepad
+> **Note:** ControlBridgeReceiver is a standalone fork of [PadConnectReceiver](https://github.com/PadConnectApp/PadConnectReceiver) adapted to pair with ControlBridge, the standalone fork of PadConnect.
+
+**Desktop receiver for ControlBridge** - turns UDP input from your phone into a real virtual gamepad
 
 ControlBridgeReceiver is the Desktop side companion to **[ControlBridge](https://github.com/najisheheem05/ControlBridge)**. It listens for low latency controller input streamed from the ControlBridge Android app and exposes it to Desktop (and games) as a real virtual controller, using **ViGEm** on Windows and **uinput** on Linux.
 
